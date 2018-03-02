@@ -1,72 +1,67 @@
 package com.fugener.rest.dynamo.repository;
 
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
-import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
-import com.amazonaws.services.dynamodbv2.model.CreateTableRequest;
-import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughput;
-import com.amazonaws.services.dynamodbv2.model.ResourceInUseException;
-import com.fugener.rest.FugenerRestApplication;
 import com.fugener.rest.dynamo.model.User;
-import com.fugener.rest.dynamo.repository.rule.LocalDynamoCreateRule;
+import com.fugener.rest.dynamo.repository.base.BaseRepositoryTest;
 import org.junit.Before;
-import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-import org.springframework.test.context.web.WebAppConfiguration;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.*;
 
 @RunWith(SpringJUnit4ClassRunner.class)
-@SpringBootTest(classes = FugenerRestApplication.class)
-@WebAppConfiguration
-@ActiveProfiles("local")
-@TestPropertySource(properties = {
-        "amazon.dynamodb.endpoint=http://localhost:8000/",
-        "amazon.aws.accesskey=test1",
-        "amazon.aws.secretkey=test231" })
-public class UserRepositoryTests {
+public class UserRepositoryTests extends BaseRepositoryTest {
 
-    @ClassRule
-    public static LocalDynamoCreateRule dynamoCreateRule = new LocalDynamoCreateRule();
+    private UserRepository userRepository;
+    private String tableName = "User";
 
-    private DynamoDBMapper dynamoDBMapper;
-
-    @Autowired
-    private AmazonDynamoDB amazonDynamoDB;
-
-    @Autowired
-    UserRepository userRepository;
-
+    @Override
     @Before
-    public void setup() throws Exception {
-        try {
-            dynamoDBMapper = new DynamoDBMapper(amazonDynamoDB);
-            CreateTableRequest tableRequest = dynamoDBMapper.generateCreateTableRequest(User.class);
-            tableRequest.setProvisionedThroughput(new ProvisionedThroughput(1L, 1L));
-            amazonDynamoDB.createTable(tableRequest);
-        } catch (ResourceInUseException e) {
-
-        }
-
-        dynamoDBMapper.batchDelete((List<User>) userRepository.findAll());
+    public void setup() {
+        super.setup();
+        userRepository = new UserDynamoRepository(userDynamoDBMapper, tableName);
     }
 
     @Test
-    public void testCreateUser() {
+    public void testCreateAndUpdateUser() {
         String id = "id";
         String name = "name";
         User user = User.builder().id(id).name(name).build();
-        userRepository.save(user);
+        List<User> userList = userRepository.getUsersByIds(Arrays.asList(id));
+        assertEquals(0, userList.size());
 
-        List<User> userList = (List<User>) userRepository.findAll();
+        userRepository.saveUser(user);
+        userList = userRepository.getUsersByIds(Arrays.asList(id));
         assertEquals(1, userList.size());
         assertEquals(id, userList.get(0).getId());
+        assertEquals(name, userList.get(0).getName());
+
+        String name2 = "name2";
+        user = User.builder().id(id).name(name2).build();
+        userRepository.saveUser(user);
+        userList = userRepository.getUsersByIds(Arrays.asList(id));
+        assertEquals(1, userList.size());
+        assertEquals(id, userList.get(0).getId());
+        assertEquals(name2, userList.get(0).getName());
+    }
+
+    @Test
+    public void testGetUsersByIds() {
+        List<String> userIdList = Arrays.asList("id1", "id2", "id3");
+        List<User> userList = userRepository.getUsersByIds(userIdList);
+        assertEquals(0, userList.size());
+
+        User user0 = User.builder().id(userIdList.get(0)).name("name0").build();
+        User user1 = User.builder().id(userIdList.get(1)).name("name1").build();
+        User user2 = User.builder().id(userIdList.get(2)).name("name2").build();
+        userRepository.saveUser(user0);
+        userRepository.saveUser(user1);
+        userRepository.saveUser(user2);
+
+        userList = userRepository.getUsersByIds(userIdList);
+        assertEquals(3, userList.size());
     }
 }
